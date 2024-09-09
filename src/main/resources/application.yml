@@ -86,6 +86,12 @@ cos:
     secretKey: xxx
     region: xxx
     bucket: xxx
+
+yuapi:
+  client:
+    access-key: r5ftpv01r7z1tkjt6a2x9azbbvv49ea0
+    secret-key: fe7j5be6j7cnajs62hx4lp84rnyj4l78
+
 # 接口文档配置
 knife4j:
   enable: true
@@ -97,3 +103,6 @@ knife4j:
         api-rule: package
         api-rule-resources:
           - com.skye.controller
+
+
+

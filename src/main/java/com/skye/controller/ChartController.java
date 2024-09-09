@@ -10,27 +10,35 @@ import com.skye.common.DeleteRequest;
 import com.skye.common.ErrorCode;
 import com.skye.common.ResultUtils;
 import com.skye.constant.CommonConstant;
+import com.skye.constant.FileConstant;
 import com.skye.constant.UserConstant;
 import com.skye.exception.BusinessException;
 import com.skye.exception.ThrowUtils;
-import com.skye.model.dto.chart.ChartAddRequest;
-import com.skye.model.dto.chart.ChartEditRequest;
-import com.skye.model.dto.chart.ChartQueryRequest;
-import com.skye.model.dto.chart.ChartUpdateRequest;
+import com.skye.manager.AiManager;
+import com.skye.model.dto.chart.*;
+import com.skye.model.dto.file.UploadFileRequest;
 import com.skye.model.entity.Chart;
 import com.skye.model.entity.User;
 
+import com.skye.model.enums.FileUploadBizEnum;
+import com.skye.model.vo.AiVO;
 import com.skye.service.ChartService;
 import com.skye.service.UserService;
+import com.skye.utils.ExcelUtils;
 import com.skye.utils.SqlUtils;
+import com.yupi.yucongming.dev.client.YuCongMingClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.io.File;
 import java.util.List;
 
 /**
@@ -50,7 +58,11 @@ public class ChartController {
     @Resource
     private UserService userService;
 
+    @Resource
+    private AiManager aiManager;
+
     private final static Gson GSON = new Gson();
+    long VDMS_MODEL_ID = 1832673039155191809L;
 
     // region 增删改查
 
@@ -214,6 +226,86 @@ public class ChartController {
     }
 
     /**
+     * 智能分析
+     *
+     * @param multipartFile
+     * @param genChartByAiRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/gen")
+    public BaseResponse<AiVO> genChartByAi(@RequestPart("file") MultipartFile multipartFile,
+                                           GenChartByAiRequest genChartByAiRequest, HttpServletRequest request) {
+
+        // 获取表格信息
+        String name = genChartByAiRequest.getName();
+        String goal = genChartByAiRequest.getGoal();
+        String chartType = genChartByAiRequest.getChartType();
+
+        // 校验表格信息
+        // 如果分析目标为空，就抛出请求参数错误异常，并给出提示
+        ThrowUtils.throwIf(StringUtils.isBlank(goal), ErrorCode.PARAMS_ERROR, "分析目标不能为空");
+        // 如果名称不为空，长度大于100，抛出异常，给出提示
+        ThrowUtils.throwIf(StringUtils.isNotBlank(name) && name.length() > 100, ErrorCode.PARAMS_ERROR, "名称长度不能超过100");
+
+        // 用户登录，登录后才可以使用
+        User loginUser = userService.getLoginUser(request);
+
+        /*
+        * 用户输入实例：
+        *   分析需求：
+            分析网站用户的增长情况
+            原始数据：
+            日期，用户数：
+            1号，10
+            2号，20
+            3号，30";
+        * */
+        //构建用户输入
+        StringBuilder userInput = new StringBuilder();
+        userInput.append("分析目标：").append("\n");
+        //拼接分析目标
+        String userGoal = goal;
+        //如果图表内容不为空
+        if (StringUtils.isNotBlank(chartType)) {
+            userGoal += "，请使用" + chartType;
+        }
+        userInput.append(userGoal).append("\n");
+        userInput.append("原始数据：").append("\n");
+
+        String cvsData = ExcelUtils.excelToCSV(multipartFile);
+        userInput.append(cvsData).append("\n");
+
+        //获取结果
+        String result = aiManager.doChat(VDMS_MODEL_ID, userInput.toString());
+        String[] splits = result.split("【【【【【");
+        //拆分后校验
+        if (splits.length < 3) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "Ai生成错误");
+        }
+
+        String genChart = splits[1].trim();
+        // 遍历genChart，将其中的单引号改为双引号
+        genChart = genChart.replaceAll("'", "\"");
+        String genResult = splits[2].trim();
+        // 插入到数据库
+        Chart chart = new Chart();
+        chart.setName(name);
+        chart.setGoal(goal);
+        chart.setChartData(cvsData);
+        chart.setChartType(chartType);
+        chart.setGenChart(genChart);
+        chart.setGenResult(genResult);
+        chart.setUserId(loginUser.getId());
+        boolean saveResult = chartService.save(chart);
+        ThrowUtils.throwIf(!saveResult, ErrorCode.SYSTEM_ERROR, "图表保存失败");
+        AiVO aiVO = new AiVO();
+        aiVO.setGenChart(genChart);
+        aiVO.setGenResult(genResult);
+        aiVO.setChartId(chart.getId());
+        return ResultUtils.success(aiVO);
+    }
+    /**
      * 获取查询包装类
      *
      * @param chartQueryRequest
@@ -225,6 +317,7 @@ public class ChartController {
             return queryWrapper;
         }
         Long id = chartQueryRequest.getId();
+        String name = chartQueryRequest.getName();
         String goal = chartQueryRequest.getGoal();
         String chartType = chartQueryRequest.getChartType();
         Long userId = chartQueryRequest.getUserId();
@@ -232,6 +325,7 @@ public class ChartController {
         String sortOrder = chartQueryRequest.getSortOrder();
 
         queryWrapper.eq(id != null && id > 0, "id", id);
+        queryWrapper.like(StringUtils.isNotBlank(name), "name", name);
         queryWrapper.eq(StringUtils.isNotBlank(goal), "goal", goal);
         queryWrapper.eq(StringUtils.isNotBlank(chartType), "chartType", chartType);
         queryWrapper.eq(ObjectUtils.isNotEmpty(userId), "userId", userId);
