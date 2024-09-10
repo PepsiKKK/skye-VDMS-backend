@@ -1,6 +1,5 @@
 package com.skye.controller;
 
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.gson.Gson;
@@ -10,42 +9,33 @@ import com.skye.common.DeleteRequest;
 import com.skye.common.ErrorCode;
 import com.skye.common.ResultUtils;
 import com.skye.constant.CommonConstant;
-import com.skye.constant.FileConstant;
 import com.skye.constant.UserConstant;
 import com.skye.exception.BusinessException;
 import com.skye.exception.ThrowUtils;
 import com.skye.manager.AiManager;
 import com.skye.model.dto.chart.*;
-import com.skye.model.dto.file.UploadFileRequest;
 import com.skye.model.entity.Chart;
 import com.skye.model.entity.User;
-
-import com.skye.model.enums.FileUploadBizEnum;
 import com.skye.model.vo.AiVO;
 import com.skye.service.ChartService;
 import com.skye.service.UserService;
 import com.skye.utils.ExcelUtils;
 import com.skye.utils.SqlUtils;
-import com.yupi.yucongming.dev.client.YuCongMingClient;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.io.File;
-import java.util.List;
 
 /**
  * 帖子接口
  *
- * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
- * @from <a href="https://yupi.icu">编程导航知识星球</a>
+ *  @author skye
+ *  
  */
 @RestController
 @RequestMapping("/chart")
