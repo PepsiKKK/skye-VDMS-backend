@@ -1,5 +1,6 @@
 package com.skye.controller;
 
+import cn.hutool.core.io.FileUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.google.gson.Gson;
@@ -13,6 +14,7 @@ import com.skye.constant.UserConstant;
 import com.skye.exception.BusinessException;
 import com.skye.exception.ThrowUtils;
 import com.skye.manager.AiManager;
+import com.skye.manager.RedisLimiterManager;
 import com.skye.model.dto.chart.*;
 import com.skye.model.entity.Chart;
 import com.skye.model.entity.User;
@@ -30,6 +32,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * 帖子接口
@@ -50,6 +54,10 @@ public class ChartController {
 
     @Resource
     private AiManager aiManager;
+
+    //redisson限流
+    @Resource
+    private RedisLimiterManager redisLimiterManager;
 
     private final static Gson GSON = new Gson();
     long VDMS_MODEL_ID = 1832673039155191809L;
@@ -238,9 +246,33 @@ public class ChartController {
         // 如果名称不为空，长度大于100，抛出异常，给出提示
         ThrowUtils.throwIf(StringUtils.isNotBlank(name) && name.length() > 100, ErrorCode.PARAMS_ERROR, "名称长度不能超过100");
 
+        /**
+         * 校验文件
+         */
+        // 获取文件大小
+        long fileSize = multipartFile.getSize();
+        // 获取文件名
+        String originalFilename = multipartFile.getOriginalFilename();
+
+        // 校验文件大小
+        // 定义1MB的常量
+        final long ONE_MB = 1024 * 1024L;
+        // 如果文件大小,大于一兆,就抛出异常,并提示文件超过1M
+        ThrowUtils.throwIf(fileSize > ONE_MB, ErrorCode.PARAMS_ERROR, "文件大小不得大于1M");
+
+        // 校验文件名 使用FileUtil工具类
+        String suffix = FileUtil.getSuffix(originalFilename);
+        //定义合法的文件后缀
+        final List<String> ALLOW_SUFFIX = Arrays.asList("xlsx", "xls");
+        // 如果suffix的后缀不在List的范围内,抛出异常,并提示'文件后缀非法'
+        ThrowUtils.throwIf(!ALLOW_SUFFIX.contains(suffix), ErrorCode.PARAMS_ERROR, "文件后缀非法");
+
+
         // 用户登录，登录后才可以使用
         User loginUser = userService.getLoginUser(request);
 
+        // redisson限流
+        redisLimiterManager.doRateLimit("genCharByAi_"+loginUser.getId());
         /*
         * 用户输入实例：
         *   分析需求：
